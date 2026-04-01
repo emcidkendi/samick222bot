@@ -1,0 +1,113 @@
+name: Mercari Alert
+
+on:
+  schedule:
+    - cron: '5,35 * * * *'
+    - cron: '*/5 * * * *'
+    - cron: '0 6,12 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    if: github.event.schedule == '5,35 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+      - run: pip install requests selenium webdriver-manager beautifulsoup4
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            seen_items.json
+            daily_log.json
+            callback_offset.json
+          key: samick-data-${{ github.run_id }}
+          restore-keys: samick-data-
+      - name: Run scraper
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scraper.py
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            seen_items.json
+            daily_log.json
+            callback_offset.json
+          key: samick-data-${{ github.run_id }}
+
+  check_likes:
+    if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            seen_items.json
+            daily_log.json
+            callback_offset.json
+          key: samick-data-${{ github.run_id }}
+          restore-keys: samick-data-
+      - name: Check likes
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: python check_likes.py
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            seen_items.json
+            daily_log.json
+            callback_offset.json
+          key: samick-data-${{ github.run_id }}
+
+  daily_report:
+    if: github.event.schedule == '0 6,12 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            seen_items.json
+            daily_log.json
+            callback_offset.json
+          key: samick-data-${{ github.run_id }}
+          restore-keys: samick-data-
+      - name: Send daily report
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
+        run: python daily_report.py
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            seen_items.json
+            daily_log.json
+            callback_offset.json
+          key: samick-data-${{ github.run_id }}
